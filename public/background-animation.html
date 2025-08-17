@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>线条动画背景 - 一路向哪？</title>
+  <style>
+    body { margin: 0; overflow: hidden; background: #000; } /* 黑色背景，适合动画 */
+    canvas { display: block; } /* Canvas 全屏 */
+  </style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+
+    // 设置Canvas尺寸为全屏
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    window.addEventListener('resize', () => {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    });
+
+    // 定义字符的简化路径点（每个字符用数组表示点[x, y]，相对坐标）
+    // 注意：这些是手动简化的点；实际可使用字体库生成更多点
+    const characters = {
+      '一': [[0, 50], [100, 50]], // 简单横线
+      '路': [[20, 0], [20, 100], [50, 50], [80, 0], [80, 100]],
+      '向': [[0, 0], [50, 100], [100, 0], [50, 50]],
+      '哪': [[0, 0], [0, 100], [50, 50], [100, 100], [100, 0]],
+      '?': [[50, 0], [100, 50], [50, 100], [0, 50], [50, 50]] // 简化问号
+    };
+
+    // 目标文字："一路向哪？"，每个字符分配空间（宽度100，间距20）
+    const text = '一路向哪？';
+    const charWidth = 100;
+    const charSpacing = 20;
+    const startX = (canvas.width - (text.length * (charWidth + charSpacing) - charSpacing)) / 2;
+    const startY = canvas.height / 2 - 50; // 垂直居中
+
+    // 生成所有目标点
+    let targetPoints = [];
+    Array.from(text).forEach((char, charIndex) => {
+      const points = characters[char] || []; // 获取字符点
+      points.forEach(point => {
+        targetPoints.push({
+          x: startX + charIndex * (charWidth + charSpacing) + point[0],
+          y: startY + point[1]
+        });
+      });
+    });
+
+    // 线条类
+    class Line {
+      constructor(target) {
+        this.x = Math.random() * canvas.width; // 随机起点
+        this.y = Math.random() * canvas.height;
+        this.target = target;
+        this.trail = []; // 轨迹点
+        this.speed = 0.02 + Math.random() * 0.03; // 随机速度
+        this.color = `hsl(${Math.random() * 360}, 100%, 70%)`; // 随机颜色
+      }
+
+      update() {
+        // 向目标移动
+        this.x += (this.target.x - this.x) * this.speed;
+        this.y += (this.target.y - this.y) * this.speed;
+
+        // 添加到轨迹（限制长度以渐隐）
+        this.trail.push({ x: this.x, y: this.y });
+        if (this.trail.length > 50) this.trail.shift(); // 限制轨迹长度
+
+        // 如果接近目标，停止移动
+        if (Math.abs(this.target.x - this.x) < 1 && Math.abs(this.target.y - this.y) < 1) {
+          this.speed = 0;
+        }
+      }
+
+      draw() {
+        ctx.beginPath();
+        ctx.strokeStyle = this.color;
+        ctx.lineWidth = 2;
+
+        // 绘制渐隐轨迹
+        this.trail.forEach((point, index) => {
+          ctx.globalAlpha = index / this.trail.length; // 渐隐
+          if (index === 0) {
+            ctx.moveTo(point.x, point.y);
+          } else {
+            ctx.lineTo(point.x, point.y);
+          }
+        });
+        ctx.stroke();
+        ctx.globalAlpha = 1; // 重置透明度
+      }
+    }
+
+    // 创建线条（每目标点一条线条）
+    const lines = targetPoints.map(target => new Line(target));
+
+    // 动画循环
+    function animate() {
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.05)'; // 轻微渐隐背景，实现痕迹消失
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      lines.forEach(line => {
+        line.update();
+        line.draw();
+      });
+
+      requestAnimationFrame(animate);
+    }
+
+    animate();
+  </script>
+</body>
+</html>
