@@ -4,7 +4,7 @@ import { resolve } from 'path';
 
 export default defineConfig({
   plugins: [react()],
-  base: process.env.NODE_ENV === 'production' ? '/一路向哪？/' : '/',
+  base: process.env.NODE_ENV === 'production' ? '/travel-story-gift/' : '/',
   resolve: {
     alias: {
       '@': resolve(__dirname, 'src'),
