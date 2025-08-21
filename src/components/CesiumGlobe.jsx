@@ -31,6 +31,17 @@ export default function CesiumGlobe({ goTo, goToCity }) {
   const viewer = useRef(null);
   const [showTicket, setShowTicket] = useState(false);
   const [ticketImage, setTicketImage] = useState(null);
+  const [showMoonPhotos, setShowMoonPhotos] = useState(false);
+  const [currentMoonPhoto, setCurrentMoonPhoto] = useState(0);
+  
+  // 月球异地照片
+  const moonPhotos = [
+    '/images/cities/月球/Screenshot_20250716_230917_com.tencent.mm.jpg',
+    '/images/cities/月球/Screenshot_20250716_230920_com.tencent.mm.jpg',
+    '/images/cities/月球/Screenshot_20250717_235058_com.tencent.mm.jpg',
+    '/images/cities/月球/Screenshot_20250717_235102_com.tencent.mm.jpg',
+    '/images/cities/月球/Screenshot_20250717_235423_com.tencent.mm.jpg',
+  ];
 
   useEffect(() => {
     if (!cesiumContainer.current || viewer.current) return;
@@ -136,6 +147,45 @@ export default function CesiumGlobe({ goTo, goToCity }) {
 
       console.log('完成添加城市点位，当前实体数:', viewer.current.entities.values.length);
 
+      // 添加月球
+      const moonPosition = Cesium.Cartesian3.fromDegrees(114 + 30, 23, 38400000); // 在地球旁边，真实月球距离的1/10
+      
+      const moonEntity = viewer.current.entities.add({
+        name: '月球',
+        position: moonPosition,
+        ellipsoid: {
+          radii: new Cesium.Cartesian3(174000, 174000, 174000), // 月球半径约1737公里，缩小10倍
+          material: new Cesium.ImageMaterialProperty({
+            image: '/cesium/Assets/Textures/moonSmall.jpg', // 使用Cesium自带的月球贴图
+            transparent: false
+          }),
+          outline: false,
+        },
+        label: {
+          text: '月球 🌙',
+          font: 'bold 18px PingFang SC, Microsoft YaHei, Arial, sans-serif',
+          fillColor: Cesium.Color.LIGHTYELLOW,
+          outlineColor: Cesium.Color.BLACK,
+          outlineWidth: 2,
+          style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+          pixelOffset: new Cesium.Cartesian2(0, -200000),
+          showBackground: true,
+          backgroundColor: Cesium.Color.BLACK.withAlpha(0.8),
+          backgroundPadding: new Cesium.Cartesian2(12, 8),
+          scaleByDistance: new Cesium.NearFarScalar(1.5e6, 1.5, 1.5e8, 0.8),
+          horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
+          verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+          scale: new Cesium.CallbackProperty((time) => {
+            const phase = Cesium.JulianDate.secondsDifference(time, viewer.current.clock.currentTime) * 2 * Math.PI / 3;
+            return 1 + Math.sin(phase) * 0.1; // 轻微的缩放动画
+          }, false),
+        },
+        description: '月球 - 异地时光',
+        isMoon: true,
+      });
+      
+      console.log('月球已添加到场景中');
+
       // 添加点击事件监听器
       const clickHandler = (event) => {
         try {
@@ -143,6 +193,14 @@ export default function CesiumGlobe({ goTo, goToCity }) {
           
           if (Cesium.defined(pickedObject) && Cesium.defined(pickedObject.id)) {
             const entity = pickedObject.id;
+            
+            // 检查是否点击了月球
+            if (entity.isMoon) {
+              console.log('点击了月球，显示异地照片');
+              setShowMoonPhotos(true);
+              setCurrentMoonPhoto(0);
+              return;
+            }
             
             if (entity.pointData) {
               const pointData = entity.pointData;
@@ -366,6 +424,15 @@ export default function CesiumGlobe({ goTo, goToCity }) {
     }
   };
 
+  // 月球照片导航函数
+  const nextMoonPhoto = () => {
+    setCurrentMoonPhoto((prev) => (prev + 1) % moonPhotos.length);
+  };
+  
+  const prevMoonPhoto = () => {
+    setCurrentMoonPhoto((prev) => (prev - 1 + moonPhotos.length) % moonPhotos.length);
+  };
+
   return (
     <div ref={cesiumContainer} style={{ width: '100vw', height: '100vh', margin: 0, padding: 0, overflow: 'hidden', position: 'relative' }}>
       {showTicket && ticketImage && (
@@ -388,6 +455,189 @@ export default function CesiumGlobe({ goTo, goToCity }) {
             alt="旅程票" 
             style={{ maxWidth: '400px', borderRadius: '10px', boxShadow: '0 4px 8px rgba(0,0,0,0.2)' }} 
           />
+        </motion.div>
+      )}
+      
+      {/* 月球照片浏览器 */}
+      {showMoonPhotos && (
+        <motion.div
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={{ opacity: 0, scale: 0.9 }}
+          transition={{ duration: 0.6, ease: 'easeOut' }}
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            width: '100vw',
+            height: '100vh',
+            backgroundColor: 'rgba(0, 0, 0, 0.95)',
+            zIndex: 2000,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '20px',
+          }}
+        >
+          <div style={{
+            position: 'relative',
+            maxWidth: '90vw',
+            maxHeight: '80vh',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+          }}>
+            {/* 标题 */}
+            <h2 style={{
+              color: '#fff',
+              fontSize: '28px',
+              marginBottom: '20px',
+              textAlign: 'center',
+              fontFamily: 'PingFang SC, Microsoft YaHei, Arial, sans-serif',
+              textShadow: '2px 2px 4px rgba(0,0,0,0.8)',
+            }}>
+              🌙 异地时光 - 思念如月
+            </h2>
+            
+            {/* 照片容器 */}
+            <div style={{
+              position: 'relative',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: '100%',
+              maxHeight: '70vh',
+            }}>
+              {/* 上一张按钮 */}
+              <button
+                onClick={prevMoonPhoto}
+                style={{
+                  position: 'absolute',
+                  left: '20px',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  backgroundColor: 'rgba(255, 255, 255, 0.2)',
+                  border: 'none',
+                  borderRadius: '50%',
+                  width: '60px',
+                  height: '60px',
+                  fontSize: '24px',
+                  color: '#fff',
+                  cursor: 'pointer',
+                  zIndex: 3,
+                  backdropFilter: 'blur(10px)',
+                  transition: 'all 0.3s ease',
+                }}
+                onMouseEnter={(e) => {
+                  e.target.style.backgroundColor = 'rgba(255, 255, 255, 0.4)';
+                  e.target.style.transform = 'translateY(-50%) scale(1.1)';
+                }}
+                onMouseLeave={(e) => {
+                  e.target.style.backgroundColor = 'rgba(255, 255, 255, 0.2)';
+                  e.target.style.transform = 'translateY(-50%) scale(1)';
+                }}
+              >
+                ❮
+              </button>
+              
+              {/* 照片 */}
+              <motion.img
+                key={currentMoonPhoto}
+                initial={{ opacity: 0, x: 50 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -50 }}
+                transition={{ duration: 0.4 }}
+                src={moonPhotos[currentMoonPhoto]}
+                alt={`异地时光 ${currentMoonPhoto + 1}`}
+                style={{
+                  maxWidth: '80%',
+                  maxHeight: '100%',
+                  objectFit: 'contain',
+                  borderRadius: '15px',
+                  boxShadow: '0 10px 30px rgba(0,0,0,0.7)',
+                  border: '3px solid rgba(255, 255, 255, 0.3)',
+                }}
+              />
+              
+              {/* 下一张按钮 */}
+              <button
+                onClick={nextMoonPhoto}
+                style={{
+                  position: 'absolute',
+                  right: '20px',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  backgroundColor: 'rgba(255, 255, 255, 0.2)',
+                  border: 'none',
+                  borderRadius: '50%',
+                  width: '60px',
+                  height: '60px',
+                  fontSize: '24px',
+                  color: '#fff',
+                  cursor: 'pointer',
+                  zIndex: 3,
+                  backdropFilter: 'blur(10px)',
+                  transition: 'all 0.3s ease',
+                }}
+                onMouseEnter={(e) => {
+                  e.target.style.backgroundColor = 'rgba(255, 255, 255, 0.4)';
+                  e.target.style.transform = 'translateY(-50%) scale(1.1)';
+                }}
+                onMouseLeave={(e) => {
+                  e.target.style.backgroundColor = 'rgba(255, 255, 255, 0.2)';
+                  e.target.style.transform = 'translateY(-50%) scale(1)';
+                }}
+              >
+                ❯
+              </button>
+            </div>
+            
+            {/* 照片计数器和关闭按钮 */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              width: '100%',
+              maxWidth: '500px',
+              marginTop: '20px',
+            }}>
+              <div style={{
+                color: '#fff',
+                fontSize: '16px',
+                opacity: 0.8,
+                fontFamily: 'PingFang SC, Microsoft YaHei, Arial, sans-serif',
+              }}>
+                {currentMoonPhoto + 1} / {moonPhotos.length}
+              </div>
+              
+              <button
+                onClick={() => setShowMoonPhotos(false)}
+                style={{
+                  backgroundColor: 'rgba(255, 255, 255, 0.2)',
+                  border: 'none',
+                  borderRadius: '25px',
+                  padding: '12px 24px',
+                  fontSize: '16px',
+                  color: '#fff',
+                  cursor: 'pointer',
+                  backdropFilter: 'blur(10px)',
+                  transition: 'all 0.3s ease',
+                  fontFamily: 'PingFang SC, Microsoft YaHei, Arial, sans-serif',
+                }}
+                onMouseEnter={(e) => {
+                  e.target.style.backgroundColor = 'rgba(255, 255, 255, 0.4)';
+                  e.target.style.transform = 'scale(1.05)';
+                }}
+                onMouseLeave={(e) => {
+                  e.target.style.backgroundColor = 'rgba(255, 255, 255, 0.2)';
+                  e.target.style.transform = 'scale(1)';
+                }}
+              >
+                关闭 ✕
+              </button>
+            </div>
+          </div>
         </motion.div>
       )}
     </div>
