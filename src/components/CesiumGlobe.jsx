@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import * as Cesium from 'cesium';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 
 // 主要地标点数据
 const pointsData = [
@@ -26,11 +26,63 @@ const pointsData = [
   { name: '马来西亚', lng: 101.9758, lat: 4.2105, color: '#FF0000' },
 ];
 
-export default function CesiumGlobe({ goTo, goToCity }) {
+export default function CesiumGlobe({ goTo, goToCity, transitionMode = false, scrollProgress = 0 }) {
   const cesiumContainer = useRef(null);
   const viewer = useRef(null);
   const [showTicket, setShowTicket] = useState(false);
   const [ticketImage, setTicketImage] = useState(null);
+  
+  // 动画状态跟踪
+  const [isAnimating, setIsAnimating] = useState(false);
+  const [currentAnimation, setCurrentAnimation] = useState(null);
+  const animationCleanupRef = useRef(null);
+  const latestAnimationRef = useRef(null); // 跟踪最新的动画ID
+  
+  // 调试票据状态变化
+  useEffect(() => {
+    console.log(`票据状态变化: showTicket=${showTicket}, ticketImage=${ticketImage}`);
+  }, [showTicket, ticketImage]);
+  
+  // 开发环境下添加到window对象，方便调试
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.testTicket = (cityName = '台北') => {
+        console.log(`手动测试票据: ${cityName}`);
+        const encodedCityName = encodeURIComponent(cityName);
+        const ticketPath = `/images/cities/${encodedCityName}/ticket.png`;
+        setShowTicket(true);
+        setTicketImage(ticketPath);
+        setTimeout(() => {
+          setShowTicket(false);
+          setTicketImage(null);
+        }, 3000);
+      };
+      
+      // 测试动画切换功能
+      window.testAnimationSwitch = () => {
+        console.log('测试动画切换: 台北 -> 成都 -> 马来西亚');
+        setTimeout(() => onCityClick('台北'), 100);
+        setTimeout(() => onCityClick('成都'), 2000);
+        setTimeout(() => onCityClick('马来西亚'), 4000);
+      };
+      
+      // 查看当前动画状态
+      window.getAnimationStatus = () => {
+        console.log('动画状态:', {
+          isAnimating,
+          currentAnimation,
+          latestAnimation: latestAnimationRef.current,
+          hasCleanup: !!animationCleanupRef.current
+        });
+      };
+      
+      // 简单测试单个城市
+      window.testSingleCity = (cityName = '台北') => {
+        console.log(`测试单个城市: ${cityName}`);
+        onCityClick(cityName);
+      };
+    }
+  }, [isAnimating, currentAnimation]);
   const [showMoonPhotos, setShowMoonPhotos] = useState(false);
   const [currentMoonPhoto, setCurrentMoonPhoto] = useState(0);
   
@@ -82,13 +134,47 @@ export default function CesiumGlobe({ goTo, goToCity }) {
       viewer.current.scene.globe.enableLighting = false;
       viewer.current.scene.globe.show = true;
       
+      // 在过渡模式下禁用相机交互
+      if (transitionMode) {
+        viewer.current.scene.screenSpaceCameraController.enableRotate = false;
+        viewer.current.scene.screenSpaceCameraController.enableTranslate = false;
+        viewer.current.scene.screenSpaceCameraController.enableZoom = false;
+        viewer.current.scene.screenSpaceCameraController.enableTilt = false;
+        viewer.current.scene.screenSpaceCameraController.enableLook = false;
+      }
+      
       // 保留Cesium默认的影像层，不做任何修改
       console.log('使用Cesium默认影像层，影像层数量:', viewer.current.imageryLayers.length);
 
-      // 飞到中国上空
-      viewer.current.camera.setView({
-        destination: Cesium.Cartesian3.fromDegrees(114, 23, 2000000),
-      });
+      // 根据模式设置初始相机位置和目标
+      if (transitionMode) {
+        // 过渡模式：逐渐从远处拉近到深圳
+        const distance = 50000000 - (scrollProgress * 45000000); // 从5000万米到500万米
+        const shenzhenLng = 114.0579;
+        const shenzhenLat = 22.5431;
+        
+        const cameraPosition = Cesium.Cartesian3.fromDegrees(
+          shenzhenLng + (1 - scrollProgress) * 20, // 逐渐接近深圳经度
+          shenzhenLat + (1 - scrollProgress) * 10,  // 逐渐接近深圳纬度
+          distance
+        );
+        
+        viewer.current.camera.setView({
+          destination: cameraPosition,
+          orientation: {
+            heading: 0,
+            pitch: -Math.PI / 3 - (scrollProgress * Math.PI / 6), // 逐渐向下倾斜
+            roll: 0
+          }
+        });
+        
+        console.log(`过渡模式相机设置: 滚动进度${scrollProgress}, 距离${distance}米`);
+      } else {
+        // 正常模式：飞到能同时看到地球和月球的最佳视角
+        viewer.current.camera.setView({
+          destination: Cesium.Cartesian3.fromDegrees(114 + 10, 23, 25000000), // 调整到能看到地球和月球的距离
+        });
+      }
 
       console.log('相机位置设置完成');
 
@@ -147,55 +233,100 @@ export default function CesiumGlobe({ goTo, goToCity }) {
 
       console.log('完成添加城市点位，当前实体数:', viewer.current.entities.values.length);
 
-      // 添加月球
-      const moonPosition = Cesium.Cartesian3.fromDegrees(114 + 30, 23, 38400000); // 在地球旁边，真实月球距离的1/10
+      // 添加月球 - 调整大小和位置使其更容易看到
+      const moonPosition = Cesium.Cartesian3.fromDegrees(114 + 20, 23, 15000000); // 更近的距离，更容易看到
       
       const moonEntity = viewer.current.entities.add({
         name: '月球',
         position: moonPosition,
         ellipsoid: {
-          radii: new Cesium.Cartesian3(174000, 174000, 174000), // 月球半径约1737公里，缩小10倍
+          radii: new Cesium.Cartesian3(500000, 500000, 500000), // 放大月球半径，更容易看到
           material: new Cesium.ImageMaterialProperty({
-            image: '/cesium/Assets/Textures/moonSmall.jpg', // 使用Cesium自带的月球贴图
+            image: '/cesium/Assets/Textures/moonSmall.jpg',
             transparent: false
           }),
-          outline: false,
-        },
-        label: {
-          text: '月球 🌙',
-          font: 'bold 18px PingFang SC, Microsoft YaHei, Arial, sans-serif',
-          fillColor: Cesium.Color.LIGHTYELLOW,
-          outlineColor: Cesium.Color.BLACK,
-          outlineWidth: 2,
-          style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-          pixelOffset: new Cesium.Cartesian2(0, -200000),
-          showBackground: true,
-          backgroundColor: Cesium.Color.BLACK.withAlpha(0.8),
-          backgroundPadding: new Cesium.Cartesian2(12, 8),
-          scaleByDistance: new Cesium.NearFarScalar(1.5e6, 1.5, 1.5e8, 0.8),
-          horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
-          verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
-          scale: new Cesium.CallbackProperty((time) => {
-            const phase = Cesium.JulianDate.secondsDifference(time, viewer.current.clock.currentTime) * 2 * Math.PI / 3;
-            return 1 + Math.sin(phase) * 0.1; // 轻微的缩放动画
-          }, false),
+          outline: false, // 移除边框线
         },
         description: '月球 - 异地时光',
         isMoon: true,
       });
       
-      console.log('月球已添加到场景中');
+      // 添加月球光晕效果 - 内层
+      const moonGlowEntity = viewer.current.entities.add({
+        name: '月球光晕',
+        position: moonPosition,
+        ellipsoid: {
+          radii: new Cesium.Cartesian3(550000, 550000, 550000), // 内层光晕
+          material: new Cesium.ColorMaterialProperty(
+            new Cesium.CallbackProperty((time) => {
+              // 月亮的真实黄色光晕，增强呼吸动画
+              const phase = Cesium.JulianDate.secondsDifference(time, viewer.current.clock.currentTime) * 2 * Math.PI / 4; // 4秒周期，更明显
+              const alpha = 0.25 + Math.sin(phase) * 0.2; // 0.05-0.45 大幅度变化，更明显的呼吸
+              // 真实月亮的暖黄色
+              return new Cesium.Color(1.0, 0.85, 0.4, alpha); // 月亮的暖黄色
+            }, false)
+          ),
+          outline: false,
+        },
+        description: '月球光晕',
+      });
+      
+      // 添加羽化外层光晕
+      const moonFeatherGlowEntity = viewer.current.entities.add({
+        name: '月球羽化光晕',
+        position: moonPosition,
+        ellipsoid: {
+          radii: new Cesium.Cartesian3(600000, 600000, 600000), // 羽化外层
+          material: new Cesium.ColorMaterialProperty(
+            new Cesium.CallbackProperty((time) => {
+              // 羽化边缘，更柔和的渐变
+              const phase = Cesium.JulianDate.secondsDifference(time, viewer.current.clock.currentTime) * 2 * Math.PI / 4; // 与内层同步
+              const alpha = 0.12 + Math.sin(phase) * 0.1; // 0.02-0.22 羽化效果
+              // 稍浅的月黄色用于羽化
+              return new Cesium.Color(1.0, 0.9, 0.6, alpha); // 羽化层的浅黄色
+            }, false)
+          ),
+          outline: false,
+        },
+        description: '月球羽化光晕',
+      });
+      
+      // 添加最外层羽化
+      const moonSoftGlowEntity = viewer.current.entities.add({
+        name: '月球软羽化',
+        position: moonPosition,
+        ellipsoid: {
+          radii: new Cesium.Cartesian3(650000, 650000, 650000), // 最外层羽化
+          material: new Cesium.ColorMaterialProperty(
+            new Cesium.CallbackProperty((time) => {
+              // 最柔和的羽化边缘
+              const phase = Cesium.JulianDate.secondsDifference(time, viewer.current.clock.currentTime) * 2 * Math.PI / 4; // 与内层同步
+              const alpha = 0.06 + Math.sin(phase) * 0.05; // 0.01-0.11 最柔和的羽化
+              // 最浅的月黄色
+              return new Cesium.Color(1.0, 0.95, 0.8, alpha); // 最浅的羽化层
+            }, false)
+          ),
+          outline: false,
+        },
+        description: '月球软羽化',
+      });
+      
+      console.log('月球已添加到场景中（包含光晕效果）');
+      console.log('月球位置:', '经度 134°, 纬度 23°, 高度 15,000km');
+      console.log('提示: 缩放相机到高度 25,000km 以上可同时看到地球和月球');
 
-      // 添加点击事件监听器
+      // 添加点击事件监听器（仅在非过渡模式下）
       const clickHandler = (event) => {
+        if (transitionMode) return; // 过渡模式下禁用点击
+        
         try {
           const pickedObject = viewer.current.scene.pick(new Cesium.Cartesian2(event.clientX, event.clientY));
           
           if (Cesium.defined(pickedObject) && Cesium.defined(pickedObject.id)) {
             const entity = pickedObject.id;
             
-            // 检查是否点击了月球
-            if (entity.isMoon) {
+            // 检查是否点击了月球或任何光晕层
+            if (entity.isMoon || entity.name === '月球光晕' || entity.name === '月球羽化光晕' || entity.name === '月球软羽化') {
               console.log('点击了月球，显示异地照片');
               setShowMoonPhotos(true);
               setCurrentMoonPhoto(0);
@@ -235,7 +366,61 @@ export default function CesiumGlobe({ goTo, goToCity }) {
     };
   }, [goToCity]);
 
-  let planeEntity; // 定义在组件 scope 内
+  // 监听滚动进度变化，实时更新相机位置（仅在过渡模式下）
+  useEffect(() => {
+    if (!viewer.current || !transitionMode) return;
+    
+    const distance = 50000000 - (scrollProgress * 45000000); // 从5000万米到500万米
+    const shenzhenLng = 114.0579;
+    const shenzhenLat = 22.5431;
+    
+    const cameraPosition = Cesium.Cartesian3.fromDegrees(
+      shenzhenLng + (1 - scrollProgress) * 20, // 逐渐接近深圳经度
+      shenzhenLat + (1 - scrollProgress) * 10,  // 逐渐接近深圳纬度
+      distance
+    );
+    
+    // 平滑过渡相机位置
+    viewer.current.camera.setView({
+      destination: cameraPosition,
+      orientation: {
+        heading: 0,
+        pitch: -Math.PI / 3 - (scrollProgress * Math.PI / 6), // 逐渐向下倾斜
+        roll: 0
+      }
+    });
+    
+  }, [transitionMode, scrollProgress]);
+
+  // 动态控制相机交互：只有在滚动接近完成时才启用
+  useEffect(() => {
+    if (!viewer.current || !transitionMode) return;
+    
+    const shouldEnableInteraction = scrollProgress > 0.95;
+    
+    viewer.current.scene.screenSpaceCameraController.enableRotate = shouldEnableInteraction;
+    viewer.current.scene.screenSpaceCameraController.enableTranslate = shouldEnableInteraction;
+    viewer.current.scene.screenSpaceCameraController.enableZoom = shouldEnableInteraction;
+    viewer.current.scene.screenSpaceCameraController.enableTilt = shouldEnableInteraction;
+    viewer.current.scene.screenSpaceCameraController.enableLook = shouldEnableInteraction;
+    
+    console.log(`相机交互${shouldEnableInteraction ? '已启用' : '已禁用'}, 滚动进度: ${(scrollProgress * 100).toFixed(1)}%`);
+    
+  }, [transitionMode, scrollProgress]);
+
+  // 清理当前动画的函数
+  const cleanupCurrentAnimation = () => {
+    if (animationCleanupRef.current) {
+      console.log('取消当前动画');
+      animationCleanupRef.current();
+      animationCleanupRef.current = null;
+    }
+    setIsAnimating(false);
+    setCurrentAnimation(null);
+    setShowTicket(false);
+    setTicketImage(null);
+    // 注意：不清理 latestAnimationRef，因为新动画已经设置了新的ID
+  };
 
   // 城市坐标配置
   const cityPositions = {
@@ -253,6 +438,7 @@ export default function CesiumGlobe({ goTo, goToCity }) {
     '绵阳': Cesium.Cartesian3.fromDegrees(104.6796, 31.4675, 0),
     '广元': Cesium.Cartesian3.fromDegrees(105.8434, 32.4355, 0),
     '外伶仃岛': Cesium.Cartesian3.fromDegrees(114.0050, 22.1150, 0),
+    '马来西亚': Cesium.Cartesian3.fromDegrees(101.9758, 4.2105, 0), // 吉隆坡坐标
   };
 
   // 交通工具配置（移除svg，改为参数传递）
@@ -266,16 +452,49 @@ export default function CesiumGlobe({ goTo, goToCity }) {
   const startTransition = (cityName, fromCity, toCity, vehicleType, svg) => {
     if (!viewer.current) return;
 
-    // 只为飞机、火车、船显示票（目前仅台北有图片）
+    // 如果当前有动画在进行，先取消它
+    if (isAnimating) {
+      console.log(`取消当前动画，切换到新目标: ${cityName}`);
+      cleanupCurrentAnimation();
+    }
+
+    // 创建一个唯一的动画ID来跟踪这个特定的动画
+    const animationId = `${cityName}_${Date.now()}`;
+    console.log(`开始新动画: ${animationId}`);
+
+    // 设置为最新的动画ID
+    latestAnimationRef.current = animationId;
+
+    // 设置新的动画状态
+    setIsAnimating(true);
+    setCurrentAnimation(animationId);
+
+    // 为飞机、火车、船显示票据
     if (['plane', 'train', 'ship'].includes(vehicleType)) {
+      // 对城市名进行URL编码以支持中文字符
+      const encodedCityName = encodeURIComponent(cityName);
+      const ticketPath = `/images/cities/${encodedCityName}/ticket.png`;
       setShowTicket(true);
-      setTicketImage(cityName === '台北' ? '/images/cities/台北/ticket1.jpg' : null); // 后续添加其他图片
+      setTicketImage(ticketPath);
+      console.log(`显示票据: ${cityName} - ${ticketPath}`);
     } else {
       setShowTicket(false);
     }
 
     const fromPos = cityPositions[fromCity];
     const toPos = cityPositions[toCity];
+    
+    // 检查坐标是否存在
+    if (!fromPos || !toPos) {
+      console.error(`城市坐标缺失: fromCity=${fromCity}, toCity=${toCity}`);
+      console.error(`fromPos=${fromPos}, toPos=${toPos}`);
+      console.error('可用城市:', Object.keys(cityPositions));
+      setShowTicket(false);
+      setTicketImage(null);
+      return;
+    }
+    
+    console.log(`开始动画: ${fromCity} -> ${toCity} (${vehicleType})`);
 
     const distance = Cesium.Cartesian3.distance(fromPos, toPos);
     const minDuration = 3000;
@@ -314,31 +533,103 @@ export default function CesiumGlobe({ goTo, goToCity }) {
     const effectiveAngle = fov / 3; // 1/3 屏幕
     const cameraHeight = (distance / 2) / Math.tan(effectiveAngle / 2);
 
-    viewer.current.camera.flyTo({
+    let cameraFlyPromise = viewer.current.camera.flyTo({
       destination: Cesium.Cartesian3.fromDegrees(midLon * (180 / Math.PI), midLat * (180 / Math.PI), cameraHeight),
       duration: 2,
       complete: () => {
-        animateVehicle(pathPositions, cityName, svg, duration);
+        // 检查这个特定的动画是否仍然是当前动画
+        if (animationCleanupRef.current === null) {
+          console.log(`相机飞行完成但动画已被取消: ${cityName}`);
+          return;
+        }
+        
+        // 确保在动画开始前票据已经准备好显示
+        if (['plane', 'train', 'ship'].includes(vehicleType)) {
+          console.log(`动画开始，显示票据状态: showTicket=${showTicket}, ticketImage=${ticketImage}`);
+        }
+        animateVehicle(pathPositions, cityName, svg, duration, animationId);
       }
     });
+
+    // 设置清理函数
+    animationCleanupRef.current = () => {
+      // 取消相机飞行
+      if (cameraFlyPromise && cameraFlyPromise.cancel) {
+        cameraFlyPromise.cancel();
+      }
+      
+      // 清理所有实体（轨迹线和载具）
+      if (viewer.current && viewer.current.entities) {
+        const entitiesToRemove = [];
+        viewer.current.entities.values.forEach(entity => {
+          // 移除所有非城市点的实体（轨迹、载具、尾迹等）
+          if (!entity.pointData && !entity.isMoon && entity.name !== '月球光晕' && entity.name !== '月球羽化光晕' && entity.name !== '月球软羽化') {
+            entitiesToRemove.push(entity);
+          }
+        });
+        entitiesToRemove.forEach(entity => {
+          viewer.current.entities.remove(entity);
+        });
+      }
+    };
   };
 
-  const animateVehicle = (pathPositions, cityName, svg, duration) => {
+  const animateVehicle = (pathPositions, cityName, svg, duration, currentAnimationId) => {
     let startTime = Date.now();
+    let vehicleEntity = null; // 局部变量，每次动画都重新创建
+    let requestId = null;
+    
     const animate = () => {
+      // 检查动画是否被取消（通过检查cleanup函数是否还存在）
+      if (animationCleanupRef.current === null) {
+        console.log(`载具动画被取消: ${cityName}`);
+        if (vehicleEntity && viewer.current) {
+          viewer.current.entities.remove(vehicleEntity);
+        }
+        return;
+      }
+      
       const elapsed = Date.now() - startTime;
       const fraction = Math.min(elapsed / duration, 1);
       const index = Math.floor(fraction * (pathPositions.length - 1));
 
       if (fraction >= 1) {
+        // 检查这个动画是否仍然是最新的动画
+        if (latestAnimationRef.current !== currentAnimationId) {
+          console.log(`动画完成但已被更新的动画取代，不执行跳转: ${cityName}, 当前最新: ${latestAnimationRef.current}`);
+          if (vehicleEntity && viewer.current) {
+            viewer.current.entities.remove(vehicleEntity);
+          }
+          return;
+        }
+        
+        // 再次检查动画是否仍然有效（避免被中断后仍然跳转）
+        if (animationCleanupRef.current === null) {
+          console.log(`动画已在完成前被取消，不执行跳转: ${cityName}`);
+          if (vehicleEntity && viewer.current) {
+            viewer.current.entities.remove(vehicleEntity);
+          }
+          return;
+        }
+        
+        // 动画完成，清理状态
+        if (vehicleEntity) {
+          viewer.current.entities.remove(vehicleEntity);
+          vehicleEntity = null;
+        }
+        setIsAnimating(false);
+        setCurrentAnimation(null);
         setShowTicket(false);
         setTicketImage(null);
+        animationCleanupRef.current = null;
+        
+        console.log(`动画完成，跳转到: ${cityName} (ID: ${currentAnimationId})`);
         if (goToCity) goToCity(cityName);
         return;
       }
 
-      if (!planeEntity) {
-        planeEntity = viewer.current.entities.add({
+      if (!vehicleEntity) {
+        vehicleEntity = viewer.current.entities.add({
           position: pathPositions[0],
           billboard: {
             image: svg,
@@ -361,9 +652,9 @@ export default function CesiumGlobe({ goTo, goToCity }) {
         const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(lon2 - lon1);
         let bearing = Math.atan2(y, x);
         bearing = -bearing;
-        planeEntity.billboard.rotation.setValue(bearing);
+        vehicleEntity.billboard.rotation.setValue(bearing);
       }
-      planeEntity.position.setValue(pathPositions[index]);
+      vehicleEntity.position.setValue(pathPositions[index]);
 
       if (index % 5 === 0) {
         viewer.current.entities.add({
@@ -375,8 +666,27 @@ export default function CesiumGlobe({ goTo, goToCity }) {
         });
       }
 
-      requestAnimationFrame(animate);
+      requestId = requestAnimationFrame(animate);
     };
+    
+    // 更新清理函数以包含载具动画的取消
+    const originalCleanup = animationCleanupRef.current;
+    animationCleanupRef.current = () => {
+      if (originalCleanup) originalCleanup();
+      
+      // 取消动画帧
+      if (requestId) {
+        cancelAnimationFrame(requestId);
+        requestId = null;
+      }
+      
+      // 清理载具实体
+      if (vehicleEntity && viewer.current) {
+        viewer.current.entities.remove(vehicleEntity);
+        vehicleEntity = null;
+      }
+    };
+    
     animate();
   };
 
@@ -418,12 +728,22 @@ export default function CesiumGlobe({ goTo, goToCity }) {
       case '外伶仃岛':
         startTransition(cityName, '深圳', cityName, 'ship', '/ship.svg');
         break;
+      case '马来西亚':
+        startTransition(cityName, '深圳', cityName, 'plane', '/airplane1.svg');
+        break;
       default:
         if (goToCity) goToCity(cityName);
         break;
     }
   };
 
+  // 月球照片触控滑动相关状态
+  const [touchStart, setTouchStart] = useState(null);
+  const [touchEnd, setTouchEnd] = useState(null);
+  
+  // 最小滑动距离
+  const minSwipeDistance = 50;
+  
   // 月球照片导航函数
   const nextMoonPhoto = () => {
     setCurrentMoonPhoto((prev) => (prev + 1) % moonPhotos.length);
@@ -432,15 +752,42 @@ export default function CesiumGlobe({ goTo, goToCity }) {
   const prevMoonPhoto = () => {
     setCurrentMoonPhoto((prev) => (prev - 1 + moonPhotos.length) % moonPhotos.length);
   };
+  
+  // 触控事件处理
+  const onTouchStart = (e) => {
+    setTouchEnd(null);
+    setTouchStart(e.targetTouches[0].clientX);
+  };
+  
+  const onTouchMove = (e) => {
+    setTouchEnd(e.targetTouches[0].clientX);
+  };
+  
+  const onTouchEnd = () => {
+    if (!touchStart || !touchEnd) return;
+    const distance = touchStart - touchEnd;
+    const isLeftSwipe = distance > minSwipeDistance;
+    const isRightSwipe = distance < -minSwipeDistance;
+    
+    if (isLeftSwipe) {
+      nextMoonPhoto();
+    }
+    if (isRightSwipe) {
+      prevMoonPhoto();
+    }
+  };
 
   return (
     <div ref={cesiumContainer} style={{ width: '100vw', height: '100vh', margin: 0, padding: 0, overflow: 'hidden', position: 'relative' }}>
+      {/* 票据显示 */}
+      <AnimatePresence>
       {showTicket && ticketImage && (
         <motion.div
-          initial={{ opacity: 0, scale: 0.8 }}
-          animate={{ opacity: 1, scale: 1 }}
-          exit={{ opacity: 0, scale: 0.8 }}
-          transition={{ duration: 0.5, ease: 'easeInOut' }}
+            key="ticket"
+            initial={{ opacity: 0, scale: 0.8, y: 50 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.8, y: 50 }}
+            transition={{ duration: 0.6, ease: 'easeOut' }}
           style={{
             position: 'absolute',
             bottom: '10%',
@@ -452,13 +799,28 @@ export default function CesiumGlobe({ goTo, goToCity }) {
         >
           <img 
             src={ticketImage} 
-            alt="旅程票" 
-            style={{ maxWidth: '400px', borderRadius: '10px', boxShadow: '0 4px 8px rgba(0,0,0,0.2)' }} 
-          />
-        </motion.div>
-      )}
+              alt="旅程票据" 
+              style={{ 
+                maxWidth: '400px', 
+                maxHeight: '300px', 
+                borderRadius: '12px', 
+                boxShadow: '0 8px 24px rgba(0,0,0,0.3)', 
+                objectFit: 'contain'
+              }}
+              onError={(e) => {
+                console.log(`票据图片加载失败: ${ticketImage}`);
+                e.target.style.display = 'none';
+                setShowTicket(false);
+              }}
+              onLoad={() => {
+                console.log(`票据图片加载成功: ${ticketImage}`);
+              }}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
       
-      {/* 月球照片浏览器 */}
+      {/* 月球照片浏览器 - 触控滑动版本 */}
       {showMoonPhotos && (
         <motion.div
           initial={{ opacity: 0, scale: 0.9 }}
@@ -477,166 +839,146 @@ export default function CesiumGlobe({ goTo, goToCity }) {
             flexDirection: 'column',
             alignItems: 'center',
             justifyContent: 'center',
-            padding: '20px',
+            padding: '0',
+            overflow: 'hidden',
           }}
+          onTouchStart={onTouchStart}
+          onTouchMove={onTouchMove}
+          onTouchEnd={onTouchEnd}
         >
+          {/* 返回按钮 - 左上角 */}
+          <button
+            onClick={() => setShowMoonPhotos(false)}
+            style={{
+              position: 'absolute',
+              top: '30px',
+              left: '30px',
+              backgroundColor: 'rgba(255, 255, 255, 0.2)',
+              border: 'none',
+              borderRadius: '25px',
+              padding: '12px 20px',
+              fontSize: '16px',
+              color: '#fff',
+              cursor: 'pointer',
+              backdropFilter: 'blur(10px)',
+              transition: 'all 0.3s ease',
+              fontFamily: 'PingFang SC, Microsoft YaHei, Arial, sans-serif',
+              zIndex: 10,
+            }}
+            onMouseEnter={(e) => {
+              e.target.style.backgroundColor = 'rgba(255, 255, 255, 0.4)';
+              e.target.style.transform = 'scale(1.05)';
+            }}
+            onMouseLeave={(e) => {
+              e.target.style.backgroundColor = 'rgba(255, 255, 255, 0.2)';
+              e.target.style.transform = 'scale(1)';
+            }}
+          >
+            ← 返回
+          </button>
+
+          {/* 标题 */}
+          <h2 style={{
+            position: 'absolute',
+            top: '30px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            color: '#fff',
+            fontSize: '24px',
+            margin: 0,
+            textAlign: 'center',
+            fontFamily: 'PingFang SC, Microsoft YaHei, Arial, sans-serif',
+            textShadow: '2px 2px 4px rgba(0,0,0,0.8)',
+            zIndex: 10,
+          }}>
+            🌙 异地时光 - 思念如月
+          </h2>
+          
+          {/* 照片层叠容器 */}
           <div style={{
             position: 'relative',
-            maxWidth: '90vw',
-            maxHeight: '80vh',
+            width: '100%',
+            height: '100%',
             display: 'flex',
-            flexDirection: 'column',
             alignItems: 'center',
+            justifyContent: 'center',
+            paddingTop: '100px',
+            paddingBottom: '50px',
           }}>
-            {/* 标题 */}
-            <h2 style={{
-              color: '#fff',
-              fontSize: '28px',
-              marginBottom: '20px',
-              textAlign: 'center',
-              fontFamily: 'PingFang SC, Microsoft YaHei, Arial, sans-serif',
-              textShadow: '2px 2px 4px rgba(0,0,0,0.8)',
-            }}>
-              🌙 异地时光 - 思念如月
-            </h2>
-            
-            {/* 照片容器 */}
-            <div style={{
-              position: 'relative',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              width: '100%',
-              maxHeight: '70vh',
-            }}>
-              {/* 上一张按钮 */}
-              <button
-                onClick={prevMoonPhoto}
-                style={{
-                  position: 'absolute',
-                  left: '20px',
-                  top: '50%',
-                  transform: 'translateY(-50%)',
-                  backgroundColor: 'rgba(255, 255, 255, 0.2)',
-                  border: 'none',
-                  borderRadius: '50%',
-                  width: '60px',
-                  height: '60px',
-                  fontSize: '24px',
-                  color: '#fff',
-                  cursor: 'pointer',
-                  zIndex: 3,
-                  backdropFilter: 'blur(10px)',
-                  transition: 'all 0.3s ease',
-                }}
-                onMouseEnter={(e) => {
-                  e.target.style.backgroundColor = 'rgba(255, 255, 255, 0.4)';
-                  e.target.style.transform = 'translateY(-50%) scale(1.1)';
-                }}
-                onMouseLeave={(e) => {
-                  e.target.style.backgroundColor = 'rgba(255, 255, 255, 0.2)';
-                  e.target.style.transform = 'translateY(-50%) scale(1)';
-                }}
-              >
-                ❮
-              </button>
+            {moonPhotos.map((photo, index) => {
+              const isCurrent = index === currentMoonPhoto;
+              const isPrev = index === (currentMoonPhoto - 1 + moonPhotos.length) % moonPhotos.length;
+              const isNext = index === (currentMoonPhoto + 1) % moonPhotos.length;
               
-              {/* 照片 */}
-              <motion.img
-                key={currentMoonPhoto}
-                initial={{ opacity: 0, x: 50 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -50 }}
-                transition={{ duration: 0.4 }}
-                src={moonPhotos[currentMoonPhoto]}
-                alt={`异地时光 ${currentMoonPhoto + 1}`}
-                style={{
-                  maxWidth: '80%',
-                  maxHeight: '100%',
-                  objectFit: 'contain',
-                  borderRadius: '15px',
-                  boxShadow: '0 10px 30px rgba(0,0,0,0.7)',
-                  border: '3px solid rgba(255, 255, 255, 0.3)',
-                }}
-              />
+              let zIndex = 1;
+              let opacity = 0.3;
+              let scale = 0.8;
+              let translateX = 0;
+              let translateY = 0;
               
-              {/* 下一张按钮 */}
-              <button
-                onClick={nextMoonPhoto}
-                style={{
-                  position: 'absolute',
-                  right: '20px',
-                  top: '50%',
-                  transform: 'translateY(-50%)',
-                  backgroundColor: 'rgba(255, 255, 255, 0.2)',
-                  border: 'none',
-                  borderRadius: '50%',
-                  width: '60px',
-                  height: '60px',
-                  fontSize: '24px',
-                  color: '#fff',
-                  cursor: 'pointer',
-                  zIndex: 3,
-                  backdropFilter: 'blur(10px)',
-                  transition: 'all 0.3s ease',
-                }}
-                onMouseEnter={(e) => {
-                  e.target.style.backgroundColor = 'rgba(255, 255, 255, 0.4)';
-                  e.target.style.transform = 'translateY(-50%) scale(1.1)';
-                }}
-                onMouseLeave={(e) => {
-                  e.target.style.backgroundColor = 'rgba(255, 255, 255, 0.2)';
-                  e.target.style.transform = 'translateY(-50%) scale(1)';
-                }}
-              >
-                ❯
-              </button>
-            </div>
-            
-            {/* 照片计数器和关闭按钮 */}
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              width: '100%',
-              maxWidth: '500px',
-              marginTop: '20px',
-            }}>
-              <div style={{
-                color: '#fff',
-                fontSize: '16px',
-                opacity: 0.8,
-                fontFamily: 'PingFang SC, Microsoft YaHei, Arial, sans-serif',
-              }}>
-                {currentMoonPhoto + 1} / {moonPhotos.length}
-              </div>
+              if (isCurrent) {
+                zIndex = 5;
+                opacity = 1;
+                scale = 1;
+                translateX = 0;
+                translateY = 0;
+              } else if (isPrev) {
+                zIndex = 3;
+                opacity = 0.6;
+                scale = 0.85;
+                translateX = -100;
+                translateY = 20;
+              } else if (isNext) {
+                zIndex = 3;
+                opacity = 0.6;
+                scale = 0.85;
+                translateX = 100;
+                translateY = 20;
+              } else {
+                zIndex = 2;
+                opacity = 0.3;
+                scale = 0.7;
+                translateX = (index < currentMoonPhoto) ? -200 : 200;
+                translateY = 40;
+              }
               
-              <button
-                onClick={() => setShowMoonPhotos(false)}
-                style={{
-                  backgroundColor: 'rgba(255, 255, 255, 0.2)',
-                  border: 'none',
-                  borderRadius: '25px',
-                  padding: '12px 24px',
-                  fontSize: '16px',
-                  color: '#fff',
-                  cursor: 'pointer',
-                  backdropFilter: 'blur(10px)',
-                  transition: 'all 0.3s ease',
-                  fontFamily: 'PingFang SC, Microsoft YaHei, Arial, sans-serif',
-                }}
-                onMouseEnter={(e) => {
-                  e.target.style.backgroundColor = 'rgba(255, 255, 255, 0.4)';
-                  e.target.style.transform = 'scale(1.05)';
-                }}
-                onMouseLeave={(e) => {
-                  e.target.style.backgroundColor = 'rgba(255, 255, 255, 0.2)';
-                  e.target.style.transform = 'scale(1)';
-                }}
-              >
-                关闭 ✕
-              </button>
-            </div>
+              return (
+                <motion.img
+                  key={index}
+                  initial={false}
+                  animate={{
+                    opacity,
+                    scale,
+                    x: translateX,
+                    y: translateY,
+                    zIndex,
+                  }}
+                  transition={{
+                    duration: 0.5,
+                    ease: 'easeOut',
+                  }}
+                  src={photo}
+                  alt={`异地时光 ${index + 1}`}
+                  onClick={() => setCurrentMoonPhoto(index)}
+                  style={{
+                    position: 'absolute',
+                    maxWidth: '80vw',
+                    maxHeight: '70vh',
+                    objectFit: 'contain',
+                    borderRadius: '20px',
+                    boxShadow: isCurrent 
+                      ? '0 20px 40px rgba(0,0,0,0.8)' 
+                      : '0 10px 20px rgba(0,0,0,0.5)',
+                    border: isCurrent 
+                      ? '3px solid rgba(255, 255, 255, 0.5)' 
+                      : '2px solid rgba(255, 255, 255, 0.2)',
+                    cursor: isCurrent ? 'default' : 'pointer',
+                    userSelect: 'none',
+                    touchAction: 'manipulation',
+                  }}
+                />
+              );
+            })}
           </div>
         </motion.div>
       )}

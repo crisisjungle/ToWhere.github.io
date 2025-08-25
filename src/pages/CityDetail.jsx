@@ -45,16 +45,44 @@ export default function CityDetail({ cityName, goBack }) {
         '/images/cities/深圳/IMG_20250621_052601.jpg',
         '/images/cities/深圳/IMG_20250616_003707.jpg',
         '/images/cities/深圳/WechatIMG676.jpg',
-        '/images/cities/深圳/promphoto_1747390988553.jpg',
-        '/images/cities/深圳/promphoto_1747390988668.jpg',
-        '/images/cities/深圳/promphoto_1747390988694.jpg',
+        
+        // promphoto系列（最新添加）
         '/images/cities/深圳/promphoto_1747390988721.jpg',
+        '/images/cities/深圳/promphoto_1747390988694.jpg',
+        '/images/cities/深圳/promphoto_1747390988668.jpg',
+        '/images/cities/深圳/promphoto_1747390988553.jpg',
+        
         '/images/cities/深圳/IMG_20250516_155828.jpg',
         '/images/cities/深圳/wx_camera_1747030914549.jpg',
         '/images/cities/深圳/wx_camera_1746673550009.jpg',
         '/images/cities/深圳/wx_camera_1746593650868.jpg',
         '/images/cities/深圳/IMG_20250427_135810.jpg',
         '/images/cities/深圳/IMG_20250315_231412.jpg',
+        
+        // 微信图片17系列
+        '/images/cities/深圳/WechatIMG17818.jpg',
+        '/images/cities/深圳/WechatIMG17817.jpg',
+        '/images/cities/深圳/WechatIMG17816.jpg',
+        '/images/cities/深圳/WechatIMG17815.jpg',
+        '/images/cities/深圳/WechatIMG17814.jpg',
+        '/images/cities/深圳/WechatIMG17813.jpg',
+        '/images/cities/深圳/WechatIMG17812.jpg',
+        '/images/cities/深圳/WechatIMG17810.jpg',
+        '/images/cities/深圳/WechatIMG17809.jpg',
+        '/images/cities/深圳/WechatIMG17804.jpg',
+        '/images/cities/深圳/WechatIMG17803.jpg',
+        
+        // IMG_系列照片
+        '/images/cities/深圳/IMG_0103.jpg',
+        '/images/cities/深圳/IMG_0098.jpg',
+        '/images/cities/深圳/IMG_0072.jpg',
+        '/images/cities/深圳/IMG_0051.jpg',
+        '/images/cities/深圳/IMG_0049.jpg',
+        '/images/cities/深圳/IMG_0048.jpg',
+        '/images/cities/深圳/IMG_0044.jpg',
+        '/images/cities/深圳/IMG_0029.jpg',
+        
+        // 2024年照片
         '/images/cities/深圳/IMG_20241228_224936.jpg',
         '/images/cities/深圳/IMG_20241228_224923.jpg',
       ]
