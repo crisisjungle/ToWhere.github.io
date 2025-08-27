@@ -145,11 +145,11 @@ export default function Globe({ goTo, goToCity }) {
           maxWidth: '400px',
           zIndex: 1000
         }}>
-          <h3>帮助文档</h3>
-          <p>欢迎使用地球视图！</p>
-          <p>- 点击地球上的彩色点查看城市详情。</p>
-          <p>- 使用鼠标拖动旋转地球。</p>
-          <p>- 滚动缩放视图。</p>
+          <h3>送给阿肴25岁的生日礼物！</h3>
+          <p>· 5.28 决定要给阿肴做一个独一无二的生日礼物</p>
+          <p>· 6.28 在台湾旅行之后，开始有思路：根据我们去过的地方整理照片</p>
+          <p>· 7.13 正式开始开发 《一路向哪？》 网站</p>
+          <p>· 8.28 《一路向哪？》V1.0 上线啦！</p>
           <button 
             onClick={() => setShowHelp(false)}
             style={{ marginTop: '10px', padding: '5px 10px', background: 'rgba(255, 255, 255, 0.2)', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer' }}

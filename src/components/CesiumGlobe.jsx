@@ -93,6 +93,8 @@ export default function CesiumGlobe({ goTo, goToCity, transitionMode = false, sc
     '/images/cities/月球/Screenshot_20250717_235058_com.tencent.mm.jpg',
     '/images/cities/月球/Screenshot_20250717_235102_com.tencent.mm.jpg',
     '/images/cities/月球/Screenshot_20250717_235423_com.tencent.mm.jpg',
+    '/images/cities/月球/WechatIMG739.jpg',
+    '/images/cities/月球/WechatIMG740.jpg',
   ];
 
   useEffect(() => {
