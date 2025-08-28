@@ -74,7 +74,8 @@ export default function Home({ goTo, goToCity }) {
       '绵阳': ['1.jpg', '2.jpg', '3.jpg', '4.jpg', 'wx_camera_1737270310924.jpg'],
       '惠州': [
         'WechatIMG17788.jpg', 'WechatIMG17789.jpg', 'WechatIMG17790.jpg',
-        'WechatIMG17791.jpg', 'WechatIMG17792.jpg', 'WechatIMG17793.jpg'
+        'WechatIMG17791.jpg', 'WechatIMG17792.jpg', 'WechatIMG17793.jpg',
+        'WechatIMG17794.jpg', 'WechatIMG17795.jpg', 'WechatIMG17796.jpg'
       ],
       '中山': ['WechatIMG17786.jpg', 'WechatIMG17787.jpg'],
       '东莞': ['WechatIMG17920.jpg']
@@ -340,7 +341,97 @@ export default function Home({ goTo, goToCity }) {
           您的浏览器不支持视频播放。
         </video>
 
-
+        {/* 向下滚动引导箭头 - 只在第一屏显示 */}
+        {scrollY < window.innerHeight * 0.3 && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ 
+              opacity: [0.4, 1, 0.4],
+              y: [0, 10, 0]
+            }}
+            transition={{
+              duration: 2,
+              repeat: Infinity,
+              repeatType: "loop",
+              ease: "easeInOut"
+            }}
+            style={{
+              position: 'absolute',
+              bottom: '5%',
+              left: '50%',
+              transform: 'translateX(-50%)',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              cursor: 'pointer',
+              zIndex: 15
+            }}
+            onClick={() => {
+              if (containerRef.current) {
+                // 跳转到第一屏40%+第二屏60%的位置
+                const targetPosition = window.innerHeight * 0.6;
+                containerRef.current.scrollTo({
+                  top: targetPosition,
+                  behavior: 'smooth'
+                });
+              }
+            }}
+          >
+            {/* 提示文字 */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 1, duration: 0.5 }}
+              style={{
+                fontSize: '0.9rem',
+                color: 'rgba(61, 59, 79, 0.8)',
+                marginBottom: '8px',
+                fontWeight: '500',
+                letterSpacing: '1px'
+              }}
+            >
+              探索更多
+            </motion.div>
+            
+            {/* 箭头图标 */}
+            <motion.div
+              whileHover={{ 
+                scale: 1.2,
+                color: '#F6BEC8'
+              }}
+              whileTap={{ scale: 0.9 }}
+              style={{
+                fontSize: '2rem',
+                color: '#3D3B4F',
+                transition: 'color 0.3s ease'
+              }}
+            >
+              ↓
+            </motion.div>
+            
+            {/* 装饰性圆点 */}
+            <motion.div
+              animate={{
+                opacity: [0.2, 0.8, 0.2],
+                scale: [0.8, 1.2, 0.8]
+              }}
+              transition={{
+                duration: 2,
+                repeat: Infinity,
+                repeatType: "loop",
+                ease: "easeInOut",
+                delay: 0.5
+              }}
+              style={{
+                width: '4px',
+                height: '4px',
+                borderRadius: '50%',
+                background: '#3D3B4F',
+                marginTop: '8px'
+              }}
+            />
+          </motion.div>
+        )}
 
       </div>
 

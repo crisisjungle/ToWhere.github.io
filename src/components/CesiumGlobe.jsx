@@ -38,6 +38,9 @@ export default function CesiumGlobe({ goTo, goToCity, transitionMode = false, sc
   const animationCleanupRef = useRef(null);
   const latestAnimationRef = useRef(null); // 跟踪最新的动画ID
   
+  // 相机状态保存
+  const savedCameraState = useRef(null);
+  
   // 调试票据状态变化
   useEffect(() => {
     console.log(`票据状态变化: showTicket=${showTicket}, ticketImage=${ticketImage}`);
@@ -172,10 +175,21 @@ export default function CesiumGlobe({ goTo, goToCity, transitionMode = false, sc
         
         console.log(`过渡模式相机设置: 滚动进度${scrollProgress}, 距离${distance}米`);
       } else {
-        // 正常模式：飞到能同时看到地球和月球的最佳视角
+        // 正常模式：如果有保存的相机状态，则恢复；否则设置默认视角
+        if (savedCameraState.current) {
+          console.log('恢复保存的相机状态');
+          viewer.current.camera.setView({
+            destination: savedCameraState.current.destination,
+            orientation: savedCameraState.current.orientation
+          });
+          // 恢复后清除保存的状态，避免重复使用
+          savedCameraState.current = null;
+        } else {
+          // 默认视角：飞到能同时看到地球和月球的最佳视角
         viewer.current.camera.setView({
           destination: Cesium.Cartesian3.fromDegrees(114 + 10, 23, 25000000), // 调整到能看到地球和月球的距离
         });
+        }
       }
 
       console.log('相机位置设置完成');
@@ -693,6 +707,19 @@ export default function CesiumGlobe({ goTo, goToCity, transitionMode = false, sc
   };
 
   const onCityClick = (cityName) => {
+    // 保存当前相机状态，以便返回地球页时恢复
+    if (viewer.current && viewer.current.camera) {
+      savedCameraState.current = {
+        destination: viewer.current.camera.position.clone(),
+        orientation: {
+          heading: viewer.current.camera.heading,
+          pitch: viewer.current.camera.pitch,
+          roll: viewer.current.camera.roll
+        }
+      };
+      console.log('保存当前相机状态，用于返回时恢复');
+    }
+    
     switch (cityName) {
       case '东莞':
         startTransition(cityName, '深圳', cityName, 'car', '/car.svg');
@@ -743,8 +770,8 @@ export default function CesiumGlobe({ goTo, goToCity, transitionMode = false, sc
   const [touchStart, setTouchStart] = useState(null);
   const [touchEnd, setTouchEnd] = useState(null);
   
-  // 最小滑动距离
-  const minSwipeDistance = 50;
+  // 最小滑动距离 - 降低以提高灵敏度
+  const minSwipeDistance = 20;
   
   // 月球照片导航函数
   const nextMoonPhoto = () => {
@@ -755,29 +782,70 @@ export default function CesiumGlobe({ goTo, goToCity, transitionMode = false, sc
     setCurrentMoonPhoto((prev) => (prev - 1 + moonPhotos.length) % moonPhotos.length);
   };
   
-  // 触控事件处理
+  // 触控事件处理 - 优化为更敏感的滑动
   const onTouchStart = (e) => {
+    e.preventDefault();
     setTouchEnd(null);
     setTouchStart(e.targetTouches[0].clientX);
   };
   
   const onTouchMove = (e) => {
+    e.preventDefault();
     setTouchEnd(e.targetTouches[0].clientX);
   };
   
-  const onTouchEnd = () => {
+  const onTouchEnd = (e) => {
+    e.preventDefault();
     if (!touchStart || !touchEnd) return;
+    
     const distance = touchStart - touchEnd;
+    const velocity = Math.abs(distance);
+    
+    // 降低距离要求，增加速度感知
     const isLeftSwipe = distance > minSwipeDistance;
     const isRightSwipe = distance < -minSwipeDistance;
     
+    // 快速滑动时立即响应
+    if (velocity > 10) {
     if (isLeftSwipe) {
       nextMoonPhoto();
-    }
-    if (isRightSwipe) {
-      prevMoonPhoto();
+      } else if (isRightSwipe) {
+        prevMoonPhoto();
+      }
     }
   };
+
+
+
+  // 键盘导航支持
+  const handleKeyDown = (e) => {
+    if (!showMoonPhotos) return;
+    
+    switch (e.key) {
+      case 'ArrowLeft':
+        e.preventDefault();
+      prevMoonPhoto();
+        break;
+      case 'ArrowRight':
+        e.preventDefault();
+        nextMoonPhoto();
+        break;
+      case 'Escape':
+        e.preventDefault();
+        setShowMoonPhotos(false);
+        break;
+    }
+  };
+
+  // 添加键盘事件监听
+  useEffect(() => {
+    if (showMoonPhotos) {
+      document.addEventListener('keydown', handleKeyDown);
+      return () => {
+        document.removeEventListener('keydown', handleKeyDown);
+      };
+    }
+  }, [showMoonPhotos]);
 
   return (
     <div ref={cesiumContainer} style={{ width: '100vw', height: '100vh', margin: 0, padding: 0, overflow: 'hidden', position: 'relative' }}>
@@ -879,22 +947,571 @@ export default function CesiumGlobe({ goTo, goToCity, transitionMode = false, sc
             ← 返回
           </button>
 
-          {/* 标题 */}
-          <h2 style={{
+          {/* 古典诗句背景 - 百度汉语全部经典思念诗句 */}
+          <div style={{
             position: 'absolute',
-            top: '30px',
-            left: '50%',
-            transform: 'translateX(-50%)',
-            color: '#fff',
-            fontSize: '24px',
-            margin: 0,
-            textAlign: 'center',
-            fontFamily: 'PingFang SC, Microsoft YaHei, Arial, sans-serif',
-            textShadow: '2px 2px 4px rgba(0,0,0,0.8)',
-            zIndex: 10,
+            top: 0,
+            left: 0,
+            width: '100%',
+            height: '100%',
+            zIndex: 1,
+            pointerEvents: 'none',
+            overflow: 'hidden'
           }}>
-            🌙 异地时光 - 思念如月
-          </h2>
+            {/* 第一层 - 远景层 (透明度 0.05-0.08) 边缘分布避免重叠 */}
+            <div style={{
+              position: 'absolute',
+              left: '1%',
+              top: '8%',
+              writingMode: 'vertical-rl',
+              textOrientation: 'upright',
+              color: 'rgba(255, 215, 0, 0.08)',
+              fontSize: '14px',
+              fontFamily: '"Ma Shan Zheng", "ZCOOL XiaoWei", "Noto Serif SC", "STKaiti", "KaiTi", cursive, serif',
+              fontWeight: 'bold',
+              letterSpacing: '2px',
+              lineHeight: '2.8',
+              transform: 'scale(0.85)'
+            }}>
+              晓镜但愁云鬓改<br/>夜吟应觉月光寒
+            </div>
+
+            <div style={{
+              position: 'absolute',
+              right: '1%',
+              top: '85%',
+              writingMode: 'vertical-rl',
+              textOrientation: 'upright',
+              color: 'rgba(255, 215, 0, 0.06)',
+              fontSize: '12px',
+              fontFamily: '"Ma Shan Zheng", "ZCOOL XiaoWei", "Noto Serif SC", "STKaiti", "KaiTi", cursive, serif',
+              fontWeight: 'bold',
+              letterSpacing: '1px',
+              lineHeight: '3.2',
+              transform: 'scale(0.75)'
+            }}>
+              多情只有春庭月<br/>犹为离人照落花
+            </div>
+
+            <div style={{
+              position: 'absolute',
+              left: '94%',
+              top: '32%',
+              writingMode: 'vertical-rl',
+              textOrientation: 'upright',
+              color: 'rgba(255, 215, 0, 0.07)',
+              fontSize: '13px',
+              fontFamily: '"Ma Shan Zheng", "ZCOOL XiaoWei", "Noto Serif SC", "STKaiti", "KaiTi", cursive, serif',
+              fontWeight: 'bold',
+              letterSpacing: '2px',
+              lineHeight: '2.9'
+            }}>
+              当时明月在<br/>曾照彩云归
+            </div>
+
+            <div style={{
+              position: 'absolute',
+              left: '3%',
+              top: '95%',
+              writingMode: 'vertical-rl',
+              textOrientation: 'upright',
+              color: 'rgba(255, 215, 0, 0.05)',
+              fontSize: '11px',
+              fontFamily: '"Ma Shan Zheng", "ZCOOL XiaoWei", "Noto Serif SC", "STKaiti", "KaiTi", cursive, serif',
+              fontWeight: 'bold',
+              letterSpacing: '1px',
+              lineHeight: '3.5',
+              transform: 'scale(0.7)'
+            }}>
+              离人无语月无声<br/>明月有光人有情
+            </div>
+
+            <div style={{
+              position: 'absolute',
+              right: '96%',
+              top: '58%',
+              writingMode: 'vertical-rl',
+              textOrientation: 'upright',
+              color: 'rgba(255, 215, 0, 0.06)',
+              fontSize: '12px',
+              fontFamily: '"Ma Shan Zheng", "ZCOOL XiaoWei", "Noto Serif SC", "STKaiti", "KaiTi", cursive, serif',
+              fontWeight: 'bold',
+              letterSpacing: '1px',
+              lineHeight: '3.1',
+              transform: 'scale(0.8)'
+            }}>
+              今夜鄜州月<br/>闺中只独看
+            </div>
+
+            <div style={{
+              position: 'absolute',
+              left: '92%',
+              top: '3%',
+              writingMode: 'vertical-rl',
+              textOrientation: 'upright',
+              color: 'rgba(255, 215, 0, 0.08)',
+              fontSize: '13px',
+              fontFamily: '"Ma Shan Zheng", "ZCOOL XiaoWei", "Noto Serif SC", "STKaiti", "KaiTi", cursive, serif',
+              fontWeight: 'bold',
+              letterSpacing: '2px',
+              lineHeight: '3.0',
+              transform: 'scale(0.9)'
+            }}>
+              床前明月光<br/>疑是地上霜
+            </div>
+
+            {/* 第二层 - 中远景层 (透明度 0.09-0.12) 网格分布 */}
+            <div style={{
+              position: 'absolute',
+              left: '18%',
+              top: '28%',
+              writingMode: 'vertical-rl',
+              textOrientation: 'upright',
+              color: 'rgba(255, 215, 0, 0.12)',
+              fontSize: '18px',
+              fontFamily: '"Ma Shan Zheng", "ZCOOL XiaoWei", "Noto Serif SC", "STKaiti", "KaiTi", cursive, serif',
+              fontWeight: 'bold',
+              letterSpacing: '3px',
+              lineHeight: '2.3'
+            }}>
+              云中谁寄锦书来<br/>雁字回时月满西楼
+            </div>
+
+            <div style={{
+              position: 'absolute',
+              right: '12%',
+              top: '15%',
+              writingMode: 'vertical-rl',
+              textOrientation: 'upright',
+              color: 'rgba(255, 215, 0, 0.11)',
+              fontSize: '16px',
+              fontFamily: '"Ma Shan Zheng", "ZCOOL XiaoWei", "Noto Serif SC", "STKaiti", "KaiTi", cursive, serif',
+              fontWeight: 'bold',
+              letterSpacing: '3px',
+              lineHeight: '2.5'
+            }}>
+              此生此夜不长好<br/>明月明年何处看
+            </div>
+
+            <div style={{
+              position: 'absolute',
+              left: '28%',
+              top: '88%',
+              writingMode: 'vertical-rl',
+              textOrientation: 'upright',
+              color: 'rgba(255, 215, 0, 0.10)',
+              fontSize: '15px',
+              fontFamily: '"Ma Shan Zheng", "ZCOOL XiaoWei", "Noto Serif SC", "STKaiti", "KaiTi", cursive, serif',
+              fontWeight: 'bold',
+              letterSpacing: '2px',
+              lineHeight: '2.8'
+            }}>
+              可怜楼上月徘徊<br/>应照离人妆镜台
+            </div>
+
+            <div style={{
+              position: 'absolute',
+              right: '52%',
+              top: '2%',
+              writingMode: 'vertical-rl',
+              textOrientation: 'upright',
+              color: 'rgba(255, 215, 0, 0.09)',
+              fontSize: '15px',
+              fontFamily: '"Ma Shan Zheng", "ZCOOL XiaoWei", "Noto Serif SC", "STKaiti", "KaiTi", cursive, serif',
+              fontWeight: 'bold',
+              letterSpacing: '2px',
+              lineHeight: '2.6'
+            }}>
+              情人怨遥夜<br/>竟夕起相思
+            </div>
+
+            <div style={{
+              position: 'absolute',
+              left: '85%',
+              top: '72%',
+              writingMode: 'vertical-rl',
+              textOrientation: 'upright',
+              color: 'rgba(255, 215, 0, 0.11)',
+              fontSize: '14px',
+              fontFamily: '"Ma Shan Zheng", "ZCOOL XiaoWei", "Noto Serif SC", "STKaiti", "KaiTi", cursive, serif',
+              fontWeight: 'bold',
+              letterSpacing: '2px',
+              lineHeight: '2.9'
+            }}>
+              春风又绿江南岸<br/>明月何时照我还
+            </div>
+
+            <div style={{
+              position: 'absolute',
+              right: '35%',
+              top: '92%',
+              writingMode: 'vertical-rl',
+              textOrientation: 'upright',
+              color: 'rgba(255, 215, 0, 0.10)',
+              fontSize: '14px',
+              fontFamily: '"Ma Shan Zheng", "ZCOOL XiaoWei", "Noto Serif SC", "STKaiti", "KaiTi", cursive, serif',
+              fontWeight: 'bold',
+              letterSpacing: '2px',
+              lineHeight: '3.0'
+            }}>
+              共看明月应垂泪<br/>一夜乡心五处同
+            </div>
+
+            <div style={{
+              position: 'absolute',
+              left: '58%',
+              top: '22%',
+              writingMode: 'vertical-rl',
+              textOrientation: 'upright',
+              color: 'rgba(255, 215, 0, 0.12)',
+              fontSize: '15px',
+              fontFamily: '"Ma Shan Zheng", "ZCOOL XiaoWei", "Noto Serif SC", "STKaiti", "KaiTi", cursive, serif',
+              fontWeight: 'bold',
+              letterSpacing: '3px',
+              lineHeight: '2.7'
+            }}>
+              走马西来欲到天<br/>辞家见月两回圆
+            </div>
+
+            <div style={{
+              position: 'absolute',
+              right: '75%',
+              top: '45%',
+              writingMode: 'vertical-rl',
+              textOrientation: 'upright',
+              color: 'rgba(255, 215, 0, 0.09)',
+              fontSize: '13px',
+              fontFamily: '"Ma Shan Zheng", "ZCOOL XiaoWei", "Noto Serif SC", "STKaiti", "KaiTi", cursive, serif',
+              fontWeight: 'bold',
+              letterSpacing: '2px',
+              lineHeight: '3.2'
+            }}>
+              不堪盈手赠<br/>还寝梦佳期
+            </div>
+
+            {/* 第三层 - 中景层 (透明度 0.13-0.16) 避开前两层位置 */}
+            <div style={{
+              position: 'absolute',
+              left: '38%',
+              top: '18%',
+              writingMode: 'vertical-rl',
+              textOrientation: 'upright',
+              color: 'rgba(255, 215, 0, 0.16)',
+              fontSize: '20px',
+              fontFamily: '"Ma Shan Zheng", "ZCOOL XiaoWei", "Noto Serif SC", "STKaiti", "KaiTi", cursive, serif',
+              fontWeight: 'bold',
+              letterSpacing: '4px',
+              lineHeight: '2.1'
+            }}>
+              举头望明月<br/>低头思故乡
+            </div>
+
+            <div style={{
+              position: 'absolute',
+              right: '22%',
+              top: '58%',
+              writingMode: 'vertical-rl',
+              textOrientation: 'upright',
+              color: 'rgba(255, 215, 0, 0.15)',
+              fontSize: '19px',
+              fontFamily: '"Ma Shan Zheng", "ZCOOL XiaoWei", "Noto Serif SC", "STKaiti", "KaiTi", cursive, serif',
+              fontWeight: 'bold',
+              letterSpacing: '4px',
+              lineHeight: '2.2'
+            }}>
+              露从今夜白<br/>月是故乡明
+            </div>
+
+            <div style={{
+              position: 'absolute',
+              left: '72%',
+              top: '85%',
+              writingMode: 'vertical-rl',
+              textOrientation: 'upright',
+              color: 'rgba(255, 215, 0, 0.14)',
+              fontSize: '17px',
+              fontFamily: '"Ma Shan Zheng", "ZCOOL XiaoWei", "Noto Serif SC", "STKaiti", "KaiTi", cursive, serif',
+              fontWeight: 'bold',
+              letterSpacing: '3px',
+              lineHeight: '2.4'
+            }}>
+              举杯邀明月<br/>对影成三人
+            </div>
+
+            <div style={{
+              position: 'absolute',
+              right: '68%',
+              top: '8%',
+              writingMode: 'vertical-rl',
+              textOrientation: 'upright',
+              color: 'rgba(255, 215, 0, 0.13)',
+              fontSize: '16px',
+              fontFamily: '"Ma Shan Zheng", "ZCOOL XiaoWei", "Noto Serif SC", "STKaiti", "KaiTi", cursive, serif',
+              fontWeight: 'bold',
+              letterSpacing: '3px',
+              lineHeight: '2.6'
+            }}>
+              今夜月明人尽望<br/>不知秋思落谁家
+            </div>
+
+            <div style={{
+              position: 'absolute',
+              left: '8%',
+              top: '52%',
+              writingMode: 'vertical-rl',
+              textOrientation: 'upright',
+              color: 'rgba(255, 215, 0, 0.15)',
+              fontSize: '18px',
+              fontFamily: '"Ma Shan Zheng", "ZCOOL XiaoWei", "Noto Serif SC", "STKaiti", "KaiTi", cursive, serif',
+              fontWeight: 'bold',
+              letterSpacing: '3px',
+              lineHeight: '2.3'
+            }}>
+              明月几时有<br/>把酒问青天
+            </div>
+
+            <div style={{
+              position: 'absolute',
+              right: '58%',
+              top: '78%',
+              writingMode: 'vertical-rl',
+              textOrientation: 'upright',
+              color: 'rgba(255, 215, 0, 0.14)',
+              fontSize: '16px',
+              fontFamily: '"Ma Shan Zheng", "ZCOOL XiaoWei", "Noto Serif SC", "STKaiti", "KaiTi", cursive, serif',
+              fontWeight: 'bold',
+              letterSpacing: '2px',
+              lineHeight: '2.8'
+            }}>
+              明月松间照<br/>清泉石上流
+            </div>
+
+            <div style={{
+              position: 'absolute',
+              left: '82%',
+              top: '38%',
+              writingMode: 'vertical-rl',
+              textOrientation: 'upright',
+              color: 'rgba(255, 215, 0, 0.13)',
+              fontSize: '15px',
+              fontFamily: '"Ma Shan Zheng", "ZCOOL XiaoWei", "Noto Serif SC", "STKaiti", "KaiTi", cursive, serif',
+              fontWeight: 'bold',
+              letterSpacing: '2px',
+              lineHeight: '2.9'
+            }}>
+              明月夜短苦日高<br/>从此君王不早朝
+            </div>
+
+            {/* 第四层 - 近景层 (透明度 0.17-0.20) 完全避开前三层 */}
+            <div style={{
+              position: 'absolute',
+              left: '12%',
+              top: '68%',
+              writingMode: 'vertical-rl',
+              textOrientation: 'upright',
+              color: 'rgba(255, 215, 0, 0.20)',
+            fontSize: '24px',
+              fontFamily: '"Ma Shan Zheng", "ZCOOL XiaoWei", "Noto Serif SC", "STKaiti", "KaiTi", cursive, serif',
+              fontWeight: 'bold',
+              letterSpacing: '6px',
+              lineHeight: '1.9'
+            }}>
+              海上生明月<br/>天涯共此时
+            </div>
+            
+            <div style={{
+              position: 'absolute',
+              right: '38%',
+              top: '32%',
+              writingMode: 'vertical-rl',
+              textOrientation: 'upright',
+              color: 'rgba(255, 215, 0, 0.19)',
+              fontSize: '22px',
+              fontFamily: '"Ma Shan Zheng", "ZCOOL XiaoWei", "Noto Serif SC", "STKaiti", "KaiTi", cursive, serif',
+              fontWeight: 'bold',
+              letterSpacing: '5px',
+              lineHeight: '2.0'
+            }}>
+              我寄愁心与明月<br/>随君直到夜郎西
+            </div>
+
+            <div style={{
+              position: 'absolute',
+              left: '52%',
+              top: '48%',
+              writingMode: 'vertical-rl',
+              textOrientation: 'upright',
+              color: 'rgba(255, 215, 0, 0.18)',
+              fontSize: '20px',
+              fontFamily: '"Ma Shan Zheng", "ZCOOL XiaoWei", "Noto Serif SC", "STKaiti", "KaiTi", cursive, serif',
+              fontWeight: 'bold',
+              letterSpacing: '4px',
+              lineHeight: '2.1'
+            }}>
+              但愿人长久<br/>千里共婵娟
+            </div>
+
+            <div style={{
+              position: 'absolute',
+              right: '85%',
+              top: '28%',
+              writingMode: 'vertical-rl',
+              textOrientation: 'upright',
+              color: 'rgba(255, 215, 0, 0.17)',
+              fontSize: '18px',
+              fontFamily: '"Ma Shan Zheng", "ZCOOL XiaoWei", "Noto Serif SC", "STKaiti", "KaiTi", cursive, serif',
+              fontWeight: 'bold',
+              letterSpacing: '3px',
+              lineHeight: '2.3'
+            }}>
+              月出皎兮佼人僚兮<br/>舒窈纠兮劳心悄兮
+            </div>
+
+            <div style={{
+              position: 'absolute',
+              left: '68%',
+              top: '5%',
+              writingMode: 'vertical-rl',
+              textOrientation: 'upright',
+              color: 'rgba(255, 215, 0, 0.18)',
+              fontSize: '17px',
+              fontFamily: '"Ma Shan Zheng", "ZCOOL XiaoWei", "Noto Serif SC", "STKaiti", "KaiTi", cursive, serif',
+              fontWeight: 'bold',
+              letterSpacing: '3px',
+              lineHeight: '2.4'
+            }}>
+              暮云收尽溢清寒<br/>银汉无声转玉盘
+            </div>
+
+            {/* 第五层 - 最前景层 (透明度 0.21-0.25) 完全独立空间布局 */}
+            <div style={{
+              position: 'absolute',
+              left: '25%',
+              top: '92%',
+              writingMode: 'vertical-rl',
+              textOrientation: 'upright',
+              color: 'rgba(255, 215, 0, 0.22)',
+              fontSize: '21px',
+              fontFamily: '"Ma Shan Zheng", "ZCOOL XiaoWei", "Noto Serif SC", "STKaiti", "KaiTi", cursive, serif',
+              fontWeight: 'bold',
+              letterSpacing: '5px',
+              lineHeight: '2.0'
+            }}>
+              月下飞天镜<br/>云生结海楼
+            </div>
+
+            <div style={{
+              position: 'absolute',
+              right: '48%',
+              top: '12%',
+              writingMode: 'vertical-rl',
+              textOrientation: 'upright',
+              color: 'rgba(255, 215, 0, 0.23)',
+              fontSize: '19px',
+              fontFamily: '"Ma Shan Zheng", "ZCOOL XiaoWei", "Noto Serif SC", "STKaiti", "KaiTi", cursive, serif',
+              fontWeight: 'bold',
+              letterSpacing: '4px',
+              lineHeight: '2.2'
+            }}>
+              嫦娥应悔偷灵药<br/>碧海青天夜夜心
+            </div>
+
+            <div style={{
+              position: 'absolute',
+              left: '88%',
+              top: '18%',
+              writingMode: 'vertical-rl',
+              textOrientation: 'upright',
+              color: 'rgba(255, 215, 0, 0.21)',
+              fontSize: '16px',
+              fontFamily: '"Ma Shan Zheng", "ZCOOL XiaoWei", "Noto Serif SC", "STKaiti", "KaiTi", cursive, serif',
+              fontWeight: 'bold',
+              letterSpacing: '3px',
+              lineHeight: '2.5'
+            }}>
+              青女素娥俱耐冷<br/>月中霜里斗婵娟
+            </div>
+
+            <div style={{
+              position: 'absolute',
+              right: '5%',
+              top: '48%',
+              writingMode: 'vertical-rl',
+              textOrientation: 'upright',
+              color: 'rgba(255, 215, 0, 0.24)',
+              fontSize: '18px',
+              fontFamily: '"Ma Shan Zheng", "ZCOOL XiaoWei", "Noto Serif SC", "STKaiti", "KaiTi", cursive, serif',
+              fontWeight: 'bold',
+              letterSpacing: '4px',
+              lineHeight: '2.3'
+            }}>
+              转朱阁低绮户<br/>照无眠不应有恨
+            </div>
+
+            <div style={{
+              position: 'absolute',
+              left: '45%',
+              top: '82%',
+              writingMode: 'vertical-rl',
+              textOrientation: 'upright',
+              color: 'rgba(255, 215, 0, 0.25)',
+              fontSize: '20px',
+              fontFamily: '"Ma Shan Zheng", "ZCOOL XiaoWei", "Noto Serif SC", "STKaiti", "KaiTi", cursive, serif',
+              fontWeight: 'bold',
+              letterSpacing: '5px',
+              lineHeight: '2.0'
+            }}>
+              人有悲欢离合<br/>月有阴晴圆缺
+            </div>
+
+            <div style={{
+              position: 'absolute',
+              right: '92%',
+              top: '88%',
+              writingMode: 'vertical-rl',
+              textOrientation: 'upright',
+              color: 'rgba(255, 215, 0, 0.22)',
+              fontSize: '17px',
+              fontFamily: '"Ma Shan Zheng", "ZCOOL XiaoWei", "Noto Serif SC", "STKaiti", "KaiTi", cursive, serif',
+              fontWeight: 'bold',
+              letterSpacing: '3px',
+              lineHeight: '2.4'
+            }}>
+              小时不识月<br/>呼作白玉盘
+            </div>
+
+            <div style={{
+              position: 'absolute',
+              left: '32%',
+              top: '62%',
+              writingMode: 'vertical-rl',
+              textOrientation: 'upright',
+              color: 'rgba(255, 215, 0, 0.21)',
+              fontSize: '15px',
+              fontFamily: '"Ma Shan Zheng", "ZCOOL XiaoWei", "Noto Serif SC", "STKaiti", "KaiTi", cursive, serif',
+              fontWeight: 'bold',
+              letterSpacing: '2px',
+              lineHeight: '2.7'
+            }}>
+              月明星稀乌鹊南飞<br/>绕树三匝何枝可依
+            </div>
+
+            <div style={{
+              position: 'absolute',
+              right: '72%',
+              top: '2%',
+              writingMode: 'vertical-rl',
+              textOrientation: 'upright',
+              color: 'rgba(255, 215, 0, 0.23)',
+              fontSize: '16px',
+              fontFamily: '"Ma Shan Zheng", "ZCOOL XiaoWei", "Noto Serif SC", "STKaiti", "KaiTi", cursive, serif',
+              fontWeight: 'bold',
+              letterSpacing: '3px',
+              lineHeight: '2.6'
+            }}>
+              野旷天低树<br/>江清月近人
+            </div>
+          </div>
           
           {/* 照片层叠容器 */}
           <div style={{
@@ -904,9 +1521,15 @@ export default function CesiumGlobe({ goTo, goToCity, transitionMode = false, sc
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            paddingTop: '100px',
+            paddingTop: '50px',
             paddingBottom: '50px',
+            zIndex: 5
           }}>
+            
+
+
+
+
             {moonPhotos.map((photo, index) => {
               const isCurrent = index === currentMoonPhoto;
               const isPrev = index === (currentMoonPhoto - 1 + moonPhotos.length) % moonPhotos.length;
@@ -981,6 +1604,41 @@ export default function CesiumGlobe({ goTo, goToCity, transitionMode = false, sc
                 />
               );
             })}
+            
+            {/* 照片指示器 */}
+            <div style={{
+              position: 'absolute',
+              bottom: '30px',
+              left: '50%',
+              transform: 'translateX(-50%)',
+              display: 'flex',
+              gap: '8px',
+              zIndex: 10
+            }}>
+              {moonPhotos.map((_, index) => (
+                <motion.div
+                  key={index}
+                  onClick={() => setCurrentMoonPhoto(index)}
+                  whileHover={{ scale: 1.2 }}
+                  whileTap={{ scale: 0.9 }}
+                  style={{
+                    width: index === currentMoonPhoto ? '12px' : '8px',
+                    height: index === currentMoonPhoto ? '12px' : '8px',
+                    borderRadius: '50%',
+                    backgroundColor: index === currentMoonPhoto 
+                      ? 'rgba(255, 255, 255, 0.9)' 
+                      : 'rgba(255, 255, 255, 0.4)',
+                    cursor: 'pointer',
+                    transition: 'all 0.3s ease',
+                    border: index === currentMoonPhoto 
+                      ? '2px solid rgba(255, 215, 0, 0.8)' 
+                      : '1px solid rgba(255, 255, 255, 0.2)'
+                  }}
+                />
+              ))}
+            </div>
+
+
           </div>
         </motion.div>
       )}

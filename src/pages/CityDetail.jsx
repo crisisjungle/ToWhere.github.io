@@ -122,7 +122,17 @@ export default function CityDetail({ cityName, goBack }) {
     '惠州': {
       mainImage: '/images/cities/惠州/main.jpg',
       description: '2025.6.8',
-      gallery: []
+      gallery: [
+        '/images/cities/惠州/WechatIMG17788.jpg',
+        '/images/cities/惠州/WechatIMG17789.jpg',
+        '/images/cities/惠州/WechatIMG17790.jpg',
+        '/images/cities/惠州/WechatIMG17791.jpg',
+        '/images/cities/惠州/WechatIMG17792.jpg',
+        '/images/cities/惠州/WechatIMG17793.jpg',
+        '/images/cities/惠州/WechatIMG17794.jpg',
+        '/images/cities/惠州/WechatIMG17795.jpg',
+        '/images/cities/惠州/WechatIMG17796.jpg'
+      ]
     },
     '珠海': {
       mainImage: '/images/cities/珠海/main.jpg',
@@ -135,12 +145,17 @@ export default function CityDetail({ cityName, goBack }) {
     '中山': {
       mainImage: '/images/cities/中山/main.jpg',
       description: '2025.6.7 ～ 2025.6.8',
-      gallery: []
+      gallery: [
+        '/images/cities/中山/WechatIMG17786.jpg',
+        '/images/cities/中山/WechatIMG17787.jpg'
+      ]
     },
     '东莞': {
       mainImage: '/images/cities/东莞/main.jpg',
       description: '2025.3.3',
-      gallery: []
+      gallery: [
+        '/images/cities/东莞/WechatIMG17920.jpg'
+      ]
     },
     '外伶仃岛': {
       mainImage: '/images/cities/外伶仃岛/main.jpg',

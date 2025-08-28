@@ -1,3 +1,6 @@
+/* 导入 Google Fonts 中文字体 */
+@import url('https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;700&family=ZCOOL+XiaoWei&family=Ma+Shan+Zheng&display=swap');
+
 html, body {
   margin: 0;
   padding: 0;
