@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import CesiumGlobe from '../components/CesiumGlobe';
+import LoginModal from '../components/LoginModal';
 
 export default function Home({ goTo, goToCity }) {
   const title = '一路向哪？'.split('');
@@ -12,12 +13,57 @@ export default function Home({ goTo, goToCity }) {
   const [videoLoaded, setVideoLoaded] = useState(false);
   const [showPlayButton, setShowPlayButton] = useState(false);
   const videoRef = useRef(null);
+  
+  // 身份验证相关状态
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [showLoginModal, setShowLoginModal] = useState(false);
+  const [attemptedAction, setAttemptedAction] = useState(null);
+
+  // 身份验证处理函数
+  const handleLogin = () => {
+    setIsAuthenticated(true);
+    setShowLoginModal(false);
+    
+    // 执行之前尝试的操作
+    if (attemptedAction) {
+      attemptedAction();
+      setAttemptedAction(null);
+    }
+  };
+
+  const requireAuth = (action) => {
+    if (isAuthenticated) {
+      action();
+    } else {
+      setAttemptedAction(() => action);
+      setShowLoginModal(true);
+    }
+  };
 
   useEffect(() => {
     const handleScroll = (e) => {
       if (!containerRef.current) return;
       
       const newScrollY = containerRef.current.scrollTop;
+      
+      // 如果未认证且尝试滚动超过第一屏的30%，则阻止滚动并显示登录弹窗
+      if (!isAuthenticated && newScrollY > window.innerHeight * 0.3) {
+        e.preventDefault();
+        containerRef.current.scrollTo({
+          top: window.innerHeight * 0.3,
+          behavior: 'smooth'
+        });
+        
+        setAttemptedAction(() => () => {
+          containerRef.current.scrollTo({
+            top: newScrollY,
+            behavior: 'smooth'
+          });
+        });
+        setShowLoginModal(true);
+        return;
+      }
+      
       setScrollY(newScrollY);
       
       // 当滚动到第二屏完全显示时，可以考虑跳转到地球页面
@@ -37,7 +83,7 @@ export default function Home({ goTo, goToCity }) {
       container.addEventListener('scroll', handleScroll);
       return () => container.removeEventListener('scroll', handleScroll);
     }
-  }, [goTo]);
+  }, [goTo, isAuthenticated]);
 
 
 
@@ -367,14 +413,16 @@ export default function Home({ goTo, goToCity }) {
               zIndex: 15
             }}
             onClick={() => {
-              if (containerRef.current) {
-                // 跳转到第一屏40%+第二屏60%的位置
-                const targetPosition = window.innerHeight * 0.6;
-                containerRef.current.scrollTo({
-                  top: targetPosition,
-                  behavior: 'smooth'
-                });
-              }
+              requireAuth(() => {
+                if (containerRef.current) {
+                  // 跳转到第一屏40%+第二屏60%的位置
+                  const targetPosition = window.innerHeight * 0.6;
+                  containerRef.current.scrollTo({
+                    top: targetPosition,
+                    behavior: 'smooth'
+                  });
+                }
+              });
             }}
           >
             {/* 提示文字 */}
@@ -605,7 +653,7 @@ export default function Home({ goTo, goToCity }) {
           }}
         >
           <motion.button
-            onClick={() => goTo('globe')}
+            onClick={() => requireAuth(() => goTo('globe'))}
             style={{
               padding: '15px 30px',
               fontSize: '1.5rem',
@@ -678,6 +726,16 @@ export default function Home({ goTo, goToCity }) {
           ↑
         </motion.button>
       </div>
+
+      {/* 登录弹窗 */}
+      <LoginModal 
+        isOpen={showLoginModal}
+        onClose={() => {
+          setShowLoginModal(false);
+          setAttemptedAction(null);
+        }}
+        onLogin={handleLogin}
+      />
     </div>
   );
 } 
