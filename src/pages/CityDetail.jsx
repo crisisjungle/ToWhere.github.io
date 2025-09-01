@@ -85,6 +85,25 @@ export default function CityDetail({ cityName, goBack }) {
         // 2024年照片
         '/images/cities/深圳/IMG_20241228_224936.jpg',
         '/images/cities/深圳/IMG_20241228_224923.jpg',
+        
+        // 最新添加的微信图片系列
+        '/images/cities/深圳/WechatIMG9363.jpg',
+        '/images/cities/深圳/WechatIMG9364.jpg',
+        '/images/cities/深圳/WechatIMG9365.jpg',
+        '/images/cities/深圳/WechatIMG9366.jpg',
+        '/images/cities/深圳/WechatIMG9367.jpg',
+        '/images/cities/深圳/WechatIMG9368.jpg',
+        '/images/cities/深圳/WechatIMG9369.jpg',
+        '/images/cities/深圳/WechatIMG9370.jpg',
+        
+        // WechatIMG741系列
+        '/images/cities/深圳/WechatIMG741.jpg',
+        '/images/cities/深圳/WechatIMG742.jpg',
+        '/images/cities/深圳/WechatIMG743.jpg',
+        '/images/cities/深圳/WechatIMG744.jpg',
+        '/images/cities/深圳/WechatIMG745.jpg',
+        '/images/cities/深圳/WechatIMG746.jpg',
+        '/images/cities/深圳/WechatIMG747.jpg',
       ]
     },
     '香港': {

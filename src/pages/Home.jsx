@@ -104,7 +104,8 @@ export default function Home({ goTo, goToCity }) {
       '深圳': [
         'IMG_0029.jpg', 'IMG_0044.jpg', 'IMG_0048.jpg', 
         'IMG_20250621_052601.jpg', 'IMG_20250706_172944.jpg', 'WechatIMG17803.jpg',
-        'WechatIMG741.jpg', 'WechatIMG742.jpg', 'WechatIMG743.jpg'
+        'WechatIMG741.jpg', 'WechatIMG742.jpg', 'WechatIMG743.jpg', 'WechatIMG744.jpg',
+        'WechatIMG9363.jpg', 'WechatIMG9364.jpg', 'WechatIMG9365.jpg', 'WechatIMG9366.jpg'
       ],
       '马来西亚': [
         'IMG_20250106_083836.jpg', 'IMG_20250106_090114.jpg', 'IMG_20250106_205620.jpg',
